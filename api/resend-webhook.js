@@ -6,14 +6,24 @@ export default async function handler(req, res) {
   }
 
   try {
+    console.log('=== WEBHOOK SIGNATURE VERIFICATION ===');
+    console.log('Environment check:');
+    console.log('- RESEND_WEBHOOK_SECRET:', process.env.RESEND_WEBHOOK_SECRET ? 'SET' : 'MISSING!');
+    console.log('- SUPABASE_URL:', process.env.SUPABASE_URL ? 'SET' : 'MISSING!');
+    console.log('- SUPABASE_ANON_KEY:', process.env.SUPABASE_ANON_KEY ? 'SET' : 'MISSING!');
+
     // Verify webhook signature using HMAC-SHA256
     const signature = req.headers['x-resend-signature'];
-    console.log('=== WEBHOOK SIGNATURE VERIFICATION ===');
     console.log('Received signature header:', signature ? `${signature.substring(0, 20)}...` : 'MISSING');
 
     if (!signature) {
       console.error('Missing x-resend-signature header');
       return res.status(401).json({ error: 'Unauthorized: Missing signature' });
+    }
+
+    if (!process.env.RESEND_WEBHOOK_SECRET) {
+      console.error('RESEND_WEBHOOK_SECRET not set in environment!');
+      return res.status(500).json({ error: 'Server configuration error: missing webhook secret' });
     }
 
     // Get the raw body for verification
