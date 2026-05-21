@@ -31,18 +31,31 @@ export default async function handler(req, res) {
     );
 
     if (!lookupResponse.ok) {
-      console.error('Failed to lookup message_id');
-      return res.status(400).json({ error: 'Message not found' });
+      const errorText = await lookupResponse.text();
+      console.error('Failed to lookup message_id:', lookupResponse.status, errorText);
+      return res.status(400).json({ error: 'Message not found', details: errorText });
     }
 
     const lookupData = await lookupResponse.json();
+    console.log('Message lookup result:', lookupData);
+
     if (!lookupData || lookupData.length === 0) {
-      return res.status(400).json({ error: 'Message not found' });
+      console.warn('No email_events found for message_id:', messageId);
+      return res.status(400).json({ error: 'Message not found in email_events' });
     }
 
     const noteId = lookupData[0].note_id;
 
     // Insert new event using Supabase REST API
+    const insertBody = {
+      message_id: messageId,
+      note_id: noteId,
+      recipient,
+      event_type: eventType,
+    };
+
+    console.log('Inserting event:', insertBody);
+
     const insertResponse = await fetch(
       `${process.env.SUPABASE_URL}/rest/v1/email_events`,
       {
@@ -52,21 +65,18 @@ export default async function handler(req, res) {
           'apikey': process.env.SUPABASE_ANON_KEY,
           'Authorization': `Bearer ${process.env.SUPABASE_ANON_KEY}`,
         },
-        body: JSON.stringify({
-          message_id: messageId,
-          note_id: noteId,
-          recipient,
-          event_type: eventType,
-        }),
+        body: JSON.stringify(insertBody),
       }
     );
 
     if (!insertResponse.ok) {
-      console.error('Failed to insert event:', await insertResponse.text());
-      return res.status(500).json({ error: 'Failed to store event' });
+      const errorText = await insertResponse.text();
+      console.error('Failed to insert event:', insertResponse.status, errorText);
+      return res.status(500).json({ error: 'Failed to store event', details: errorText });
     }
 
-    return res.status(200).json({ success: true });
+    console.log('Event inserted successfully');
+    return res.status(200).json({ success: true, inserted: insertBody });
   } catch (error) {
     console.error('Webhook error:', error);
     return res.status(500).json({ error: 'Webhook processing failed' });
