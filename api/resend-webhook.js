@@ -16,10 +16,15 @@ export default async function handler(req, res) {
 
     // Extract data from Resend webhook payload
     const messageId = event.data.email_id || event.data.id || event.data.message_id;
-    // Handle 'to' being an array in Resend webhooks
-    const toField = event.data.to;
-    const recipientEmail = Array.isArray(toField) ? toField[0] : (toField || event.data.email || event.data.recipient);
     const eventType = mapResendEventType(event.type);
+
+    // Handle 'to' being an array in Resend webhooks
+    let recipientEmail;
+    if (Array.isArray(event.data.to)) {
+      recipientEmail = event.data.to[0];
+    } else {
+      recipientEmail = event.data.to || event.data.email || event.data.recipient;
+    }
 
     console.log('Parsed values:', { messageId, recipientEmail, eventType });
 
