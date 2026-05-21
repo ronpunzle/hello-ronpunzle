@@ -1,18 +1,38 @@
+import crypto from 'crypto';
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
   try {
-    const event = req.body;
-
-    console.log('Webhook received:', JSON.stringify(event, null, 2));
-
-    // Validate event structure
-    if (!event.type || !event.data) {
-      console.error('Invalid event structure:', event);
-      return res.status(400).json({ error: 'Invalid event structure', received: event });
+    // Verify webhook signature using HMAC-SHA256
+    const signature = req.headers['x-resend-signature'];
+    if (!signature) {
+      console.error('Missing x-resend-signature header');
+      return res.status(401).json({ error: 'Unauthorized: Missing signature' });
     }
+
+    // Reconstruct the body string for verification
+    const body = JSON.stringify(req.body);
+
+    // Calculate expected signature using the webhook secret
+    // Resend uses base64-encoded HMAC-SHA256
+    const expectedSignature = crypto
+      .createHmac('sha256', process.env.RESEND_WEBHOOK_SECRET)
+      .update(body)
+      .digest('base64');
+
+    // Constant-time comparison to prevent timing attacks
+    if (!constantTimeCompare(signature, expectedSignature)) {
+      console.error('Signature verification failed');
+      console.error('Expected:', expectedSignature);
+      console.error('Received:', signature);
+      return res.status(401).json({ error: 'Unauthorized: Invalid signature' });
+    }
+
+    const event = req.body;
+    console.log('Webhook verified, processing event:', event.type);
 
     // Extract data from Resend webhook payload
     const messageId = event.data.email_id || event.data.id || event.data.message_id;
@@ -32,13 +52,13 @@ export default async function handler(req, res) {
       console.error('Missing required fields:', { messageId, eventType, recipientEmail });
       return res.status(400).json({
         error: 'Missing required event data',
-        received: { messageId, eventType, recipientEmail, eventData: event.data }
+        received: { messageId, eventType, recipientEmail }
       });
     }
 
     // Look up note_id by message_id using Supabase REST API
     const lookupUrl = `${process.env.SUPABASE_URL}/rest/v1/email_events?message_id=eq.${encodeURIComponent(messageId)}&select=note_id`;
-    console.log('Looking up at:', lookupUrl);
+    console.log('Looking up message_id:', messageId);
 
     const lookupResponse = await fetch(lookupUrl, {
       headers: {
@@ -50,7 +70,7 @@ export default async function handler(req, res) {
     if (!lookupResponse.ok) {
       const errorText = await lookupResponse.text();
       console.error('Failed to lookup message_id:', lookupResponse.status, errorText);
-      return res.status(400).json({ error: 'Message not found', details: errorText });
+      return res.status(400).json({ error: 'Message not found' });
     }
 
     const lookupData = await lookupResponse.json();
@@ -89,7 +109,7 @@ export default async function handler(req, res) {
     if (!insertResponse.ok) {
       const errorText = await insertResponse.text();
       console.error('Failed to insert event:', insertResponse.status, errorText);
-      return res.status(500).json({ error: 'Failed to store event', details: errorText });
+      return res.status(500).json({ error: 'Failed to store event' });
     }
 
     console.log('Event inserted successfully');
@@ -110,4 +130,16 @@ function mapResendEventType(resendType) {
     'email.sent': 'sent',
   };
   return typeMap[resendType] || resendType;
+}
+
+// Constant-time string comparison to prevent timing attacks
+function constantTimeCompare(a, b) {
+  if (a.length !== b.length) {
+    return false;
+  }
+  let result = 0;
+  for (let i = 0; i < a.length; i++) {
+    result |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+  return result === 0;
 }

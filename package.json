@@ -1,5 +1,6 @@
 {
   "dependencies": {
-    "resend": "^6.12.3"
+    "resend": "^6.12.3",
+    "svix": "^1.94.0"
   }
 }
