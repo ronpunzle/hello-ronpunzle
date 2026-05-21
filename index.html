@@ -191,6 +191,32 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script>
         let supabaseClient;
+        const activeSubscriptions = new Set();
+
+        async function subscribeToNoteActivity(noteId) {
+            // Avoid duplicate subscriptions
+            if (activeSubscriptions.has(noteId)) return;
+            activeSubscriptions.add(noteId);
+
+            // Subscribe to real-time changes on email_events table for this note
+            supabaseClient
+                .channel(`email_events:note_id=${noteId}`)
+                .on(
+                    'postgres_changes',
+                    {
+                        event: 'INSERT',
+                        schema: 'public',
+                        table: 'email_events',
+                        filter: `note_id=eq.${noteId}`
+                    },
+                    (payload) => {
+                        console.log('New email event received:', payload.new);
+                        loadNoteActivity(noteId);
+                    }
+                )
+                .subscribe();
+        }
+
         const messageEl = document.getElementById('message');
         const submitBtn = document.getElementById('submitBtn');
 
@@ -234,8 +260,11 @@
                     </div>
                 `).join('');
 
-                // Load activity for each note
-                data.forEach(note => loadNoteActivity(note.id));
+                // Load activity for each note and subscribe to real-time updates
+                data.forEach(note => {
+                    loadNoteActivity(note.id);
+                    subscribeToNoteActivity(note.id);
+                });
             } catch (error) {
                 showError('Failed to load notes');
                 console.error(error);
@@ -326,6 +355,7 @@
                 }
 
                 showSuccess(`Email sent to ${email}!`);
+                subscribeToNoteActivity(noteId);
                 setTimeout(() => loadNoteActivity(noteId), 500);
             } catch (error) {
                 showError('Failed to send email: ' + error.message);
