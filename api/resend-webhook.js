@@ -167,7 +167,13 @@ export default async function handler(req, res) {
     if (!insertResponse.ok) {
       const errorText = await insertResponse.text();
       console.error('❌ Failed to insert event:', insertResponse.status, errorText);
-      return res.status(500).json({ error: 'Failed to store event' });
+      return res.status(500).json({
+        error: 'Failed to store event',
+        details: {
+          status: insertResponse.status,
+          message: errorText
+        }
+      });
     }
 
     console.log('✓ Event inserted successfully');
