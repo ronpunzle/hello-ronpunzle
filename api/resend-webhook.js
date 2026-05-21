@@ -77,8 +77,11 @@ export default async function handler(req, res) {
 
     const event = req.body;
     console.log('\n=== EVENT PARSING ===');
-    console.log('Event type:', event.type);
-    console.log('Full event.data:', JSON.stringify(event.data, null, 2));
+    console.log('req.body exists:', !!event);
+    console.log('req.body type:', typeof event);
+    console.log('Full req.body:', JSON.stringify(event, null, 2));
+    console.log('Event type:', event?.type);
+    console.log('Event data:', event?.data);
 
     // Extract data from Resend webhook payload
     const messageId = event.data.email_id || event.data.id || event.data.message_id;
@@ -173,10 +176,16 @@ export default async function handler(req, res) {
     }
 
     console.log('✓ Event inserted successfully');
+    console.log('========== WEBHOOK HANDLER SUCCESS ==========\n');
     return res.status(200).json({ success: true, inserted: insertBody });
   } catch (error) {
-    console.error('Webhook error:', error);
-    return res.status(500).json({ error: error.message });
+    console.error('========== WEBHOOK HANDLER ERROR ==========');
+    console.error('Error type:', error?.constructor?.name);
+    console.error('Error message:', error?.message);
+    console.error('Error stack:', error?.stack);
+    console.error('Full error object:', JSON.stringify(error, null, 2));
+    console.error('==========================================\n');
+    return res.status(500).json({ error: error?.message || 'Unknown error' });
   }
 }
 
