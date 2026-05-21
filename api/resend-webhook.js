@@ -8,6 +8,9 @@ export default async function handler(req, res) {
   try {
     // Verify webhook signature using HMAC-SHA256
     const signature = req.headers['x-resend-signature'];
+    console.log('=== WEBHOOK SIGNATURE VERIFICATION ===');
+    console.log('Received signature header:', signature ? `${signature.substring(0, 20)}...` : 'MISSING');
+
     if (!signature) {
       console.error('Missing x-resend-signature header');
       return res.status(401).json({ error: 'Unauthorized: Missing signature' });
@@ -15,6 +18,7 @@ export default async function handler(req, res) {
 
     // Reconstruct the body string for verification
     const body = JSON.stringify(req.body);
+    console.log('Request body:', body);
 
     // Calculate expected signature using the webhook secret
     // Resend uses base64-encoded HMAC-SHA256
@@ -22,6 +26,9 @@ export default async function handler(req, res) {
       .createHmac('sha256', process.env.RESEND_WEBHOOK_SECRET)
       .update(body)
       .digest('base64');
+
+    console.log('Expected signature:', expectedSignature ? `${expectedSignature.substring(0, 20)}...` : 'EMPTY');
+    console.log('Signature match:', constantTimeCompare(signature, expectedSignature));
 
     // Constant-time comparison to prevent timing attacks
     if (!constantTimeCompare(signature, expectedSignature)) {
@@ -31,8 +38,12 @@ export default async function handler(req, res) {
       return res.status(401).json({ error: 'Unauthorized: Invalid signature' });
     }
 
+    console.log('✓ Signature verification passed');
+
     const event = req.body;
-    console.log('Webhook verified, processing event:', event.type);
+    console.log('\n=== EVENT PARSING ===');
+    console.log('Event type:', event.type);
+    console.log('Full event.data:', JSON.stringify(event.data, null, 2));
 
     // Extract data from Resend webhook payload
     const messageId = event.data.email_id || event.data.id || event.data.message_id;
@@ -46,7 +57,11 @@ export default async function handler(req, res) {
       recipientEmail = event.data.to || event.data.email || event.data.recipient;
     }
 
-    console.log('Parsed values:', { messageId, recipientEmail, eventType });
+    console.log('Parsed extraction:', {
+      foundMessageId: messageId,
+      foundRecipient: recipientEmail,
+      mappedEventType: eventType
+    });
 
     if (!messageId || !eventType || !recipientEmail) {
       console.error('Missing required fields:', { messageId, eventType, recipientEmail });
@@ -58,7 +73,9 @@ export default async function handler(req, res) {
 
     // Look up note_id by message_id using Supabase REST API
     const lookupUrl = `${process.env.SUPABASE_URL}/rest/v1/email_events?message_id=eq.${encodeURIComponent(messageId)}&select=note_id`;
-    console.log('Looking up message_id:', messageId);
+    console.log('\n=== DATABASE LOOKUP ===');
+    console.log('Looking up by message_id:', messageId);
+    console.log('Lookup URL:', lookupUrl);
 
     const lookupResponse = await fetch(lookupUrl, {
       headers: {
@@ -67,21 +84,26 @@ export default async function handler(req, res) {
       },
     });
 
+    console.log('Lookup response status:', lookupResponse.status);
+
     if (!lookupResponse.ok) {
       const errorText = await lookupResponse.text();
-      console.error('Failed to lookup message_id:', lookupResponse.status, errorText);
+      console.error('❌ Failed to lookup message_id:', lookupResponse.status, errorText);
       return res.status(400).json({ error: 'Message not found' });
     }
 
     const lookupData = await lookupResponse.json();
-    console.log('Message lookup result:', lookupData);
+    console.log('Lookup response data:', JSON.stringify(lookupData, null, 2));
+    console.log('Records found:', lookupData ? lookupData.length : 0);
 
     if (!lookupData || lookupData.length === 0) {
-      console.warn('No email_events found for message_id:', messageId);
+      console.warn('❌ No email_events found for message_id:', messageId);
+      console.warn('This means the initial "sent" event was not inserted when share-note.js ran');
       return res.status(400).json({ error: 'Message not found in email_events' });
     }
 
     const noteId = lookupData[0].note_id;
+    console.log('✓ Found note_id:', noteId);
 
     // Insert new event using Supabase REST API
     const insertBody = {
@@ -91,7 +113,8 @@ export default async function handler(req, res) {
       event_type: eventType,
     };
 
-    console.log('Inserting event:', insertBody);
+    console.log('\n=== DATABASE INSERT ===');
+    console.log('Inserting event:', JSON.stringify(insertBody, null, 2));
 
     const insertResponse = await fetch(
       `${process.env.SUPABASE_URL}/rest/v1/email_events`,
@@ -106,13 +129,15 @@ export default async function handler(req, res) {
       }
     );
 
+    console.log('Insert response status:', insertResponse.status);
+
     if (!insertResponse.ok) {
       const errorText = await insertResponse.text();
-      console.error('Failed to insert event:', insertResponse.status, errorText);
+      console.error('❌ Failed to insert event:', insertResponse.status, errorText);
       return res.status(500).json({ error: 'Failed to store event' });
     }
 
-    console.log('Event inserted successfully');
+    console.log('✓ Event inserted successfully');
     return res.status(200).json({ success: true, inserted: insertBody });
   } catch (error) {
     console.error('Webhook error:', error);
