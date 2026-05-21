@@ -75,6 +75,61 @@
         .share-btn:hover {
             background: #6a3f95;
         }
+        .activity-feed {
+            font-size: 13px;
+        }
+        .activity-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 0;
+            border-bottom: 1px solid #f0f0f0;
+        }
+        .activity-item:last-child {
+            border-bottom: none;
+        }
+        .activity-email {
+            color: #666;
+            flex: 1;
+        }
+        .activity-status {
+            display: inline-block;
+            padding: 3px 8px;
+            border-radius: 3px;
+            font-size: 11px;
+            font-weight: 600;
+            margin: 0 10px;
+        }
+        .status-sent {
+            background: #e3f2fd;
+            color: #1976d2;
+        }
+        .status-delivered {
+            background: #e8f5e9;
+            color: #388e3c;
+        }
+        .status-opened {
+            background: #f3e5f5;
+            color: #7b1fa2;
+        }
+        .status-clicked {
+            background: #fff3e0;
+            color: #e65100;
+        }
+        .status-bounced {
+            background: #ffebee;
+            color: #c62828;
+        }
+        .activity-time {
+            color: #999;
+            font-size: 12px;
+            white-space: nowrap;
+        }
+        .activity-empty {
+            color: #999;
+            font-style: italic;
+            padding: 10px 0;
+        }
         .notes-list {
             display: flex;
             flex-direction: column;
@@ -173,10 +228,14 @@
                         <div class="note-content">${escapeHtml(note.content)}</div>
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 15px;">
                             <div class="note-date">${new Date(note.created_at).toLocaleString()}</div>
-                            <button class="share-btn" onclick="shareNote('${escapeAttr(note.title)}', '${escapeAttr(note.content)}')">📧 Share via Email</button>
+                            <button class="share-btn" onclick="shareNote('${escapeAttr(note.title)}', '${escapeAttr(note.content)}', '${note.id}')">📧 Share via Email</button>
                         </div>
+                        <div id="activity-${note.id}" class="activity-feed" style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #eee;"></div>
                     </div>
                 `).join('');
+
+                // Load activity for each note
+                data.forEach(note => loadNoteActivity(note.id));
             } catch (error) {
                 showError('Failed to load notes');
                 console.error(error);
@@ -238,7 +297,7 @@
             return text.replace(/'/g, "\\'").replace(/"/g, '&quot;');
         }
 
-        async function shareNote(noteTitle, noteContent) {
+        async function shareNote(noteTitle, noteContent, noteId) {
             const email = prompt('Enter recipient email address:');
 
             if (!email) return;
@@ -255,7 +314,8 @@
                     body: JSON.stringify({
                         recipientEmail: email,
                         noteTitle,
-                        noteContent
+                        noteContent,
+                        noteId
                     })
                 });
 
@@ -266,10 +326,70 @@
                 }
 
                 showSuccess(`Email sent to ${email}!`);
+                setTimeout(() => loadNoteActivity(noteId), 500);
             } catch (error) {
                 showError('Failed to send email: ' + error.message);
                 console.error(error);
             }
+        }
+
+        async function loadNoteActivity(noteId) {
+            try {
+                const { data: events, error } = await supabaseClient
+                    .from('email_events')
+                    .select('*')
+                    .eq('note_id', noteId)
+                    .order('created_at', { ascending: false });
+
+                if (error) throw error;
+
+                const activityEl = document.getElementById(`activity-${noteId}`);
+                if (!activityEl) return;
+
+                if (events.length === 0) {
+                    activityEl.innerHTML = '<div class="activity-empty">No shares yet</div>';
+                    return;
+                }
+
+                // Group by recipient and get latest event
+                const byRecipient = {};
+                events.forEach(event => {
+                    if (!byRecipient[event.recipient] || new Date(event.created_at) > new Date(byRecipient[event.recipient].created_at)) {
+                        byRecipient[event.recipient] = event;
+                    }
+                });
+
+                activityEl.innerHTML = Object.values(byRecipient)
+                    .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+                    .map(event => `
+                        <div class="activity-item">
+                            <div class="activity-email">${escapeHtml(event.recipient)}</div>
+                            <span class="activity-status status-${event.event_type}">${capitalizeFirst(event.event_type)}</span>
+                            <div class="activity-time">${getRelativeTime(event.created_at)}</div>
+                        </div>
+                    `).join('');
+            } catch (error) {
+                console.error('Failed to load activity:', error);
+            }
+        }
+
+        function capitalizeFirst(str) {
+            return str.charAt(0).toUpperCase() + str.slice(1);
+        }
+
+        function getRelativeTime(timestamp) {
+            const now = new Date();
+            const time = new Date(timestamp);
+            const seconds = Math.floor((now - time) / 1000);
+
+            if (seconds < 60) return 'just now';
+            const minutes = Math.floor(seconds / 60);
+            if (minutes < 60) return `${minutes}m ago`;
+            const hours = Math.floor(minutes / 60);
+            if (hours < 24) return `${hours}h ago`;
+            const days = Math.floor(hours / 24);
+            if (days < 7) return `${days}d ago`;
+            return time.toLocaleDateString();
         }
 
         // Initialize on page load

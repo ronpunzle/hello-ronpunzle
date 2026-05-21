@@ -1,15 +1,20 @@
 import { Resend } from 'resend';
+import { createClient } from '@supabase/supabase-js';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY
+);
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { recipientEmail, noteContent, noteTitle } = req.body;
+  const { recipientEmail, noteContent, noteTitle, noteId } = req.body;
 
-  if (!recipientEmail || !noteContent) {
+  if (!recipientEmail || !noteContent || !noteId) {
     return res.status(400).json({ error: 'Missing required fields' });
   }
 
@@ -125,18 +130,40 @@ export default async function handler(req, res) {
 </html>
     `;
 
-    const response = await resend.emails.send({
+    // Send email with note_id in headers for webhook tracking
+    const emailResponse = await resend.emails.send({
       from: 'noreply@resend.dev',
       to: recipientEmail,
       subject: `📝 Note shared: ${noteTitle}`,
       html: emailHtml,
+      headers: {
+        'X-Note-ID': noteId,
+      },
+      tags: ['note-share'],
     });
 
-    if (response.error) {
-      return res.status(400).json({ error: response.error.message });
+    if (emailResponse.error) {
+      return res.status(400).json({ error: emailResponse.error.message });
     }
 
-    return res.status(200).json({ success: true, id: response.data.id });
+    const messageId = emailResponse.data.id;
+
+    // Insert "sent" event into email_events table
+    const { error: insertError } = await supabase
+      .from('email_events')
+      .insert([{
+        message_id: messageId,
+        note_id: noteId,
+        recipient: recipientEmail,
+        event_type: 'sent',
+      }]);
+
+    if (insertError) {
+      console.error('Failed to insert sent event:', insertError);
+      // Don't fail the request, email was sent successfully
+    }
+
+    return res.status(200).json({ success: true, id: messageId });
   } catch (error) {
     console.error('Email send error:', error);
     return res.status(500).json({ error: 'Failed to send email' });
