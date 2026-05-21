@@ -2,29 +2,13 @@ import crypto from 'crypto';
 
 export default async function handler(req, res) {
   console.log('========== WEBHOOK HANDLER START ==========');
-  console.log('Method:', req.method);
-  console.log('URL:', req.url);
-  console.log('req.headers exists:', !!req.headers);
-  console.log('req.headers type:', typeof req.headers);
-  console.log('req.headers keys:', Object.keys(req.headers || {}).join(', '));
 
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
   try {
-    console.log('\n=== WEBHOOK RECEIVED ===');
-    console.log('Full headers object:', JSON.stringify(req.headers, null, 2));
-    console.log('\nSearching for signature header...');
-    console.log('x-resend-signature:', req.headers['x-resend-signature']);
-    console.log('X-Resend-Signature:', req.headers['X-Resend-Signature']);
-    console.log('X-RESEND-SIGNATURE:', req.headers['X-RESEND-SIGNATURE']);
-
-    console.log('=== WEBHOOK SIGNATURE VERIFICATION ===');
-    console.log('Environment check:');
-    console.log('- RESEND_WEBHOOK_SECRET:', process.env.RESEND_WEBHOOK_SECRET ? 'SET' : 'MISSING!');
-    console.log('- SUPABASE_URL:', process.env.SUPABASE_URL ? 'SET' : 'MISSING!');
-    console.log('- SUPABASE_ANON_KEY:', process.env.SUPABASE_ANON_KEY ? 'SET' : 'MISSING!');
+    console.log('\n=== WEBHOOK SIGNATURE VERIFICATION ===');
 
     // Verify webhook signature using HMAC-SHA256
     // Try multiple header name variations since header names can be normalized differently
@@ -33,14 +17,11 @@ export default async function handler(req, res) {
       || req.headers['X-RESEND-SIGNATURE'];
     console.log('Received signature header:', signature ? `${signature.substring(0, 20)}...` : 'MISSING');
 
-    // TODO: Signature verification is currently disabled for debugging
-    // The rest of the webhook flow (database operations) works correctly
-    // Signature verification will be re-enabled once we confirm the exact format
-    console.log('\n⚠️  SIGNATURE VERIFICATION TEMPORARILY DISABLED FOR TESTING');
-    console.log('Received signature (not verifying):', signature ? `${signature.substring(0, 20)}...` : 'MISSING');
+    if (!signature) {
+      console.error('Missing x-resend-signature header');
+      return res.status(401).json({ error: 'Unauthorized: Missing signature' });
+    }
 
-    // Signature verification code kept for reference:
-    /*
     if (!process.env.RESEND_WEBHOOK_SECRET) {
       console.error('RESEND_WEBHOOK_SECRET not set in environment!');
       return res.status(500).json({ error: 'Server configuration error: missing webhook secret' });
@@ -68,15 +49,12 @@ export default async function handler(req, res) {
       console.error('Received:', signature);
       return res.status(401).json({ error: 'Unauthorized: Invalid signature' });
     }
-    */
+
+    console.log('✓ Signature verification passed');
 
     const event = req.body;
     console.log('\n=== EVENT PARSING ===');
-    console.log('req.body exists:', !!event);
-    console.log('req.body type:', typeof event);
-    console.log('Full req.body:', JSON.stringify(event, null, 2));
     console.log('Event type:', event?.type);
-    console.log('Event data:', event?.data);
 
     // Extract data from Resend webhook payload
     const messageId = event.data.email_id || event.data.id || event.data.message_id;
