@@ -137,7 +137,9 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: emailResponse.error.message });
     }
 
+    // The message ID from Resend response is what we'll match in webhooks
     const messageId = emailResponse.data.id;
+    console.log('Email sent with ID:', messageId);
 
     // Insert "sent" event into email_events table using Supabase REST API
     try {

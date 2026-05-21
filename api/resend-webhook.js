@@ -14,9 +14,11 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Invalid event structure', received: event });
     }
 
-    // Extract data - handle different possible field names
-    const messageId = event.data.id || event.data.message_id;
-    const recipientEmail = event.data.to || event.data.email || event.data.recipient;
+    // Extract data from Resend webhook payload
+    const messageId = event.data.email_id || event.data.id || event.data.message_id;
+    // Handle 'to' being an array in Resend webhooks
+    const toField = event.data.to;
+    const recipientEmail = Array.isArray(toField) ? toField[0] : (toField || event.data.email || event.data.recipient);
     const eventType = mapResendEventType(event.type);
 
     console.log('Parsed values:', { messageId, recipientEmail, eventType });
