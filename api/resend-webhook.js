@@ -6,6 +6,9 @@ export default async function handler(req, res) {
   }
 
   try {
+    console.log('=== WEBHOOK RECEIVED ===');
+    console.log('All headers:', JSON.stringify(req.headers, null, 2));
+
     console.log('=== WEBHOOK SIGNATURE VERIFICATION ===');
     console.log('Environment check:');
     console.log('- RESEND_WEBHOOK_SECRET:', process.env.RESEND_WEBHOOK_SECRET ? 'SET' : 'MISSING!');
@@ -13,7 +16,10 @@ export default async function handler(req, res) {
     console.log('- SUPABASE_ANON_KEY:', process.env.SUPABASE_ANON_KEY ? 'SET' : 'MISSING!');
 
     // Verify webhook signature using HMAC-SHA256
-    const signature = req.headers['x-resend-signature'];
+    // Try multiple header name variations since header names can be normalized differently
+    const signature = req.headers['x-resend-signature']
+      || req.headers['X-Resend-Signature']
+      || req.headers['X-RESEND-SIGNATURE'];
     console.log('Received signature header:', signature ? `${signature.substring(0, 20)}...` : 'MISSING');
 
     if (!signature) {
