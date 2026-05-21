@@ -1,13 +1,24 @@
 import crypto from 'crypto';
 
 export default async function handler(req, res) {
+  console.log('========== WEBHOOK HANDLER START ==========');
+  console.log('Method:', req.method);
+  console.log('URL:', req.url);
+  console.log('req.headers exists:', !!req.headers);
+  console.log('req.headers type:', typeof req.headers);
+  console.log('req.headers keys:', Object.keys(req.headers || {}).join(', '));
+
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
   try {
-    console.log('=== WEBHOOK RECEIVED ===');
-    console.log('All headers:', JSON.stringify(req.headers, null, 2));
+    console.log('\n=== WEBHOOK RECEIVED ===');
+    console.log('Full headers object:', JSON.stringify(req.headers, null, 2));
+    console.log('\nSearching for signature header...');
+    console.log('x-resend-signature:', req.headers['x-resend-signature']);
+    console.log('X-Resend-Signature:', req.headers['X-Resend-Signature']);
+    console.log('X-RESEND-SIGNATURE:', req.headers['X-RESEND-SIGNATURE']);
 
     console.log('=== WEBHOOK SIGNATURE VERIFICATION ===');
     console.log('Environment check:');
