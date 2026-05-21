@@ -125,16 +125,12 @@ export default async function handler(req, res) {
 </html>
     `;
 
-    // Send email with note_id in headers for webhook tracking
+    // Send email
     const emailResponse = await resend.emails.send({
       from: 'noreply@resend.dev',
       to: recipientEmail,
       subject: `📝 Note shared: ${noteTitle}`,
       html: emailHtml,
-      headers: {
-        'X-Note-ID': noteId,
-      },
-      tags: ['note-share'],
     });
 
     if (emailResponse.error) {
