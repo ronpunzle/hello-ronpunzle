@@ -16,9 +16,17 @@ export default async function handler(req, res) {
       return res.status(401).json({ error: 'Unauthorized: Missing signature' });
     }
 
-    // Reconstruct the body string for verification
-    const body = JSON.stringify(req.body);
-    console.log('Request body:', body);
+    // Get the raw body for verification
+    // Resend signs the original raw request body, not the parsed/re-stringified version
+    let body;
+    if (req.rawBody) {
+      // Vercel provides raw body as a Buffer or string
+      body = typeof req.rawBody === 'string' ? req.rawBody : req.rawBody.toString('utf-8');
+    } else {
+      // Fallback: re-stringify the parsed body (less reliable but necessary if rawBody unavailable)
+      body = JSON.stringify(req.body);
+    }
+    console.log('Body for signature:', body.substring(0, 100) + (body.length > 100 ? '...' : ''));
 
     // Calculate expected signature using the webhook secret
     // Resend uses base64-encoded HMAC-SHA256
