@@ -67,6 +67,14 @@
             background: #ccc;
             cursor: not-allowed;
         }
+        .share-btn {
+            background: #764ba2;
+            font-size: 12px;
+            padding: 8px 12px;
+        }
+        .share-btn:hover {
+            background: #6a3f95;
+        }
         .notes-list {
             display: flex;
             flex-direction: column;
@@ -163,7 +171,10 @@
                 notesList.innerHTML = data.map(note => `
                     <div class="note">
                         <div class="note-content">${escapeHtml(note.content)}</div>
-                        <div class="note-date">${new Date(note.created_at).toLocaleString()}</div>
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 15px;">
+                            <div class="note-date">${new Date(note.created_at).toLocaleString()}</div>
+                            <button class="share-btn" onclick="shareNote('${escapeAttr(note.title)}', '${escapeAttr(note.content)}')">📧 Share via Email</button>
+                        </div>
                     </div>
                 `).join('');
             } catch (error) {
@@ -221,6 +232,44 @@
             const div = document.createElement('div');
             div.textContent = text;
             return div.innerHTML;
+        }
+
+        function escapeAttr(text) {
+            return text.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+        }
+
+        async function shareNote(noteTitle, noteContent) {
+            const email = prompt('Enter recipient email address:');
+
+            if (!email) return;
+
+            if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+                showError('Please enter a valid email address');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/share-note', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        recipientEmail: email,
+                        noteTitle,
+                        noteContent
+                    })
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.error || 'Failed to send email');
+                }
+
+                showSuccess(`Email sent to ${email}!`);
+            } catch (error) {
+                showError('Failed to send email: ' + error.message);
+                console.error(error);
+            }
         }
 
         // Initialize on page load
