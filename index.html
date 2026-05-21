@@ -117,7 +117,7 @@
 
         <div class="note-form">
             <textarea id="noteContent" placeholder="Write a new note..."></textarea>
-            <button id="submitBtn" onclick="submitNote()">Post Note</button>
+            <button id="submitBtn">Post Note</button>
         </div>
 
         <div id="notesList" class="notes-list">
@@ -127,16 +127,18 @@
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script>
-        let supabase;
+        let supabaseClient;
         const messageEl = document.getElementById('message');
+        const submitBtn = document.getElementById('submitBtn');
 
         async function initSupabase() {
             try {
                 const response = await fetch('/api/config');
                 const config = await response.json();
 
-                supabase = window.supabase.createClient(config.url, config.anonKey);
+                supabaseClient = window.supabase.createClient(config.url, config.anonKey);
                 await loadNotes();
+                submitBtn.addEventListener('click', submitNote);
             } catch (error) {
                 showError('Failed to initialize Supabase. Please check your configuration.');
                 console.error(error);
@@ -145,7 +147,7 @@
 
         async function loadNotes() {
             try {
-                const { data, error } = await supabase
+                const { data, error } = await supabaseClient
                     .from('notes')
                     .select('*')
                     .order('created_at', { ascending: false });
@@ -172,17 +174,16 @@
 
         async function submitNote() {
             const content = document.getElementById('noteContent').value.trim();
-            const btn = document.getElementById('submitBtn');
 
             if (!content) {
                 showError('Please write something!');
                 return;
             }
 
-            btn.disabled = true;
+            submitBtn.disabled = true;
 
             try {
-                const { error } = await supabase
+                const { error } = await supabaseClient
                     .from('notes')
                     .insert([{
                         content,
@@ -195,10 +196,10 @@
                 showSuccess('Note posted!');
                 await loadNotes();
             } catch (error) {
-                showError('Failed to post note');
+                showError('Failed to post note: ' + error.message);
                 console.error(error);
             } finally {
-                btn.disabled = false;
+                submitBtn.disabled = false;
             }
         }
 
