@@ -1,11 +1,6 @@
 import { Resend } from 'resend';
-import { createClient } from '@supabase/supabase-js';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY
-);
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -148,17 +143,30 @@ export default async function handler(req, res) {
 
     const messageId = emailResponse.data.id;
 
-    // Insert "sent" event into email_events table
-    const { error: insertError } = await supabase
-      .from('email_events')
-      .insert([{
-        message_id: messageId,
-        note_id: noteId,
-        recipient: recipientEmail,
-        event_type: 'sent',
-      }]);
+    // Insert "sent" event into email_events table using Supabase REST API
+    try {
+      const insertResponse = await fetch(
+        `${process.env.SUPABASE_URL}/rest/v1/email_events`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'apikey': process.env.SUPABASE_ANON_KEY,
+            'Authorization': `Bearer ${process.env.SUPABASE_ANON_KEY}`,
+          },
+          body: JSON.stringify({
+            message_id: messageId,
+            note_id: noteId,
+            recipient: recipientEmail,
+            event_type: 'sent',
+          }),
+        }
+      );
 
-    if (insertError) {
+      if (!insertResponse.ok) {
+        console.error('Failed to insert sent event:', await insertResponse.text());
+      }
+    } catch (insertError) {
       console.error('Failed to insert sent event:', insertError);
       // Don't fail the request, email was sent successfully
     }

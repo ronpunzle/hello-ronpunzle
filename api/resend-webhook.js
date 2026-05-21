@@ -1,10 +1,3 @@
-import { createClient } from '@supabase/supabase-js';
-
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY
-);
-
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
@@ -26,32 +19,50 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Missing required event data' });
     }
 
-    // Look up note_id by message_id
-    const { data: emailEvent, error: lookupError } = await supabase
-      .from('email_events')
-      .select('note_id')
-      .eq('message_id', messageId)
-      .single();
+    // Look up note_id by message_id using Supabase REST API
+    const lookupResponse = await fetch(
+      `${process.env.SUPABASE_URL}/rest/v1/email_events?message_id=eq.${encodeURIComponent(messageId)}&select=note_id`,
+      {
+        headers: {
+          'apikey': process.env.SUPABASE_ANON_KEY,
+          'Authorization': `Bearer ${process.env.SUPABASE_ANON_KEY}`,
+        },
+      }
+    );
 
-    if (lookupError) {
-      console.error('Failed to lookup message_id:', lookupError);
+    if (!lookupResponse.ok) {
+      console.error('Failed to lookup message_id');
       return res.status(400).json({ error: 'Message not found' });
     }
 
-    const noteId = emailEvent.note_id;
+    const lookupData = await lookupResponse.json();
+    if (!lookupData || lookupData.length === 0) {
+      return res.status(400).json({ error: 'Message not found' });
+    }
 
-    // Insert new event
-    const { error: insertError } = await supabase
-      .from('email_events')
-      .insert([{
-        message_id: messageId,
-        note_id: noteId,
-        recipient,
-        event_type: eventType,
-      }]);
+    const noteId = lookupData[0].note_id;
 
-    if (insertError) {
-      console.error('Failed to insert event:', insertError);
+    // Insert new event using Supabase REST API
+    const insertResponse = await fetch(
+      `${process.env.SUPABASE_URL}/rest/v1/email_events`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': process.env.SUPABASE_ANON_KEY,
+          'Authorization': `Bearer ${process.env.SUPABASE_ANON_KEY}`,
+        },
+        body: JSON.stringify({
+          message_id: messageId,
+          note_id: noteId,
+          recipient,
+          event_type: eventType,
+        }),
+      }
+    );
+
+    if (!insertResponse.ok) {
+      console.error('Failed to insert event:', await insertResponse.text());
       return res.status(500).json({ error: 'Failed to store event' });
     }
 
