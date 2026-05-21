@@ -6,29 +6,39 @@ export default async function handler(req, res) {
   try {
     const event = req.body;
 
+    console.log('Webhook received:', JSON.stringify(event, null, 2));
+
     // Validate event structure
     if (!event.type || !event.data) {
-      return res.status(400).json({ error: 'Invalid event structure' });
+      console.error('Invalid event structure:', event);
+      return res.status(400).json({ error: 'Invalid event structure', received: event });
     }
 
-    const messageId = event.data.id;
+    // Extract data - handle different possible field names
+    const messageId = event.data.id || event.data.message_id;
+    const recipientEmail = event.data.to || event.data.email || event.data.recipient;
     const eventType = mapResendEventType(event.type);
-    const recipient = event.data.to || event.data.email;
 
-    if (!messageId || !eventType || !recipient) {
-      return res.status(400).json({ error: 'Missing required event data' });
+    console.log('Parsed values:', { messageId, recipientEmail, eventType });
+
+    if (!messageId || !eventType || !recipientEmail) {
+      console.error('Missing required fields:', { messageId, eventType, recipientEmail });
+      return res.status(400).json({
+        error: 'Missing required event data',
+        received: { messageId, eventType, recipientEmail, eventData: event.data }
+      });
     }
 
     // Look up note_id by message_id using Supabase REST API
-    const lookupResponse = await fetch(
-      `${process.env.SUPABASE_URL}/rest/v1/email_events?message_id=eq.${encodeURIComponent(messageId)}&select=note_id`,
-      {
-        headers: {
-          'apikey': process.env.SUPABASE_ANON_KEY,
-          'Authorization': `Bearer ${process.env.SUPABASE_ANON_KEY}`,
-        },
-      }
-    );
+    const lookupUrl = `${process.env.SUPABASE_URL}/rest/v1/email_events?message_id=eq.${encodeURIComponent(messageId)}&select=note_id`;
+    console.log('Looking up at:', lookupUrl);
+
+    const lookupResponse = await fetch(lookupUrl, {
+      headers: {
+        'apikey': process.env.SUPABASE_ANON_KEY,
+        'Authorization': `Bearer ${process.env.SUPABASE_ANON_KEY}`,
+      },
+    });
 
     if (!lookupResponse.ok) {
       const errorText = await lookupResponse.text();
@@ -50,7 +60,7 @@ export default async function handler(req, res) {
     const insertBody = {
       message_id: messageId,
       note_id: noteId,
-      recipient,
+      recipient: recipientEmail,
       event_type: eventType,
     };
 
@@ -79,7 +89,7 @@ export default async function handler(req, res) {
     return res.status(200).json({ success: true, inserted: insertBody });
   } catch (error) {
     console.error('Webhook error:', error);
-    return res.status(500).json({ error: 'Webhook processing failed' });
+    return res.status(500).json({ error: error.message });
   }
 }
 
@@ -90,6 +100,7 @@ function mapResendEventType(resendType) {
     'email.clicked': 'clicked',
     'email.bounced': 'bounced',
     'email.complained': 'complained',
+    'email.sent': 'sent',
   };
   return typeMap[resendType] || resendType;
 }
