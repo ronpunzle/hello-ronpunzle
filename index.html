@@ -3,51 +3,223 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Hello from Outer Space</title>
+    <title>Note Taking App</title>
     <style>
-        body {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
+        * {
             margin: 0;
-            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            overflow: hidden;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
         }
         h1 {
-            color: #00d4ff;
-            font-size: 4rem;
+            color: white;
+            margin-bottom: 30px;
             text-align: center;
-            text-shadow: 0 0 20px rgba(0, 212, 255, 0.5), 2px 2px 4px rgba(0, 0, 0, 0.8);
-            letter-spacing: 2px;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
         }
-        @keyframes twinkle {
-            0%, 100% { opacity: 0.5; }
-            50% { opacity: 1; }
-        }
-        .star {
-            position: absolute;
-            width: 2px;
-            height: 2px;
+        .note-form {
             background: white;
-            border-radius: 50%;
-            animation: twinkle 3s infinite;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 30px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+        }
+        textarea {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 5px;
+            font-family: inherit;
+            font-size: 14px;
+            resize: vertical;
+            min-height: 100px;
+            margin-bottom: 10px;
+        }
+        textarea:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+        button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 5px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+        button:hover {
+            background: #5568d3;
+        }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .notes-list {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+        .note {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+        }
+        .note-content {
+            color: #333;
+            line-height: 1.6;
+            margin-bottom: 10px;
+            word-wrap: break-word;
+        }
+        .note-date {
+            color: #999;
+            font-size: 12px;
+        }
+        .loading {
+            color: white;
+            text-align: center;
+            padding: 20px;
+        }
+        .error {
+            background: #ff6b6b;
+            color: white;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+        .success {
+            background: #51cf66;
+            color: white;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
         }
     </style>
 </head>
 <body>
+    <div class="container">
+        <h1>📝 My Notes</h1>
+
+        <div id="message"></div>
+
+        <div class="note-form">
+            <textarea id="noteContent" placeholder="Write a new note..."></textarea>
+            <button id="submitBtn" onclick="submitNote()">Post Note</button>
+        </div>
+
+        <div id="notesList" class="notes-list">
+            <div class="loading">Loading notes...</div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script>
-        // Add twinkling stars
-        for (let i = 0; i < 100; i++) {
-            const star = document.createElement('div');
-            star.className = 'star';
-            star.style.left = Math.random() * 100 + '%';
-            star.style.top = Math.random() * 100 + '%';
-            star.style.animationDelay = Math.random() * 3 + 's';
-            document.body.appendChild(star);
+        let supabase;
+        const messageEl = document.getElementById('message');
+
+        async function initSupabase() {
+            try {
+                const response = await fetch('/api/config');
+                const config = await response.json();
+
+                supabase = window.supabase.createClient(config.url, config.anonKey);
+                await loadNotes();
+            } catch (error) {
+                showError('Failed to initialize Supabase. Please check your configuration.');
+                console.error(error);
+            }
         }
+
+        async function loadNotes() {
+            try {
+                const { data, error } = await supabase
+                    .from('notes')
+                    .select('*')
+                    .order('created_at', { ascending: false });
+
+                if (error) throw error;
+
+                const notesList = document.getElementById('notesList');
+                if (data.length === 0) {
+                    notesList.innerHTML = '<div class="loading">No notes yet. Create one!</div>';
+                    return;
+                }
+
+                notesList.innerHTML = data.map(note => `
+                    <div class="note">
+                        <div class="note-content">${escapeHtml(note.content)}</div>
+                        <div class="note-date">${new Date(note.created_at).toLocaleString()}</div>
+                    </div>
+                `).join('');
+            } catch (error) {
+                showError('Failed to load notes');
+                console.error(error);
+            }
+        }
+
+        async function submitNote() {
+            const content = document.getElementById('noteContent').value.trim();
+            const btn = document.getElementById('submitBtn');
+
+            if (!content) {
+                showError('Please write something!');
+                return;
+            }
+
+            btn.disabled = true;
+
+            try {
+                const { error } = await supabase
+                    .from('notes')
+                    .insert([{
+                        content,
+                        user_id: '00000000-0000-0000-0000-000000000000'
+                    }]);
+
+                if (error) throw error;
+
+                document.getElementById('noteContent').value = '';
+                showSuccess('Note posted!');
+                await loadNotes();
+            } catch (error) {
+                showError('Failed to post note');
+                console.error(error);
+            } finally {
+                btn.disabled = false;
+            }
+        }
+
+        function showError(msg) {
+            messageEl.innerHTML = `<div class="error">${msg}</div>`;
+            setTimeout(() => messageEl.innerHTML = '', 5000);
+        }
+
+        function showSuccess(msg) {
+            messageEl.innerHTML = `<div class="success">${msg}</div>`;
+            setTimeout(() => messageEl.innerHTML = '', 3000);
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // Initialize on page load
+        window.addEventListener('load', initSupabase);
     </script>
-    <h1>Hello from Outer Space</h1>
 </body>
 </html>
